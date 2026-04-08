@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "devops-info-service.fullname" . }}
+  labels:
+    {{- include "devops-info-service.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  minReadySeconds: {{ .Values.minReadySeconds }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "devops-info-service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "devops-info-service.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- if or (and .Values.secrets.enabled .Values.secrets.create) .Values.vault.enabled .Values.podAnnotations }}
+      annotations:
+        {{- if and .Values.secrets.enabled .Values.secrets.create }}
+        checksum/secret: {{ toYaml .Values.secrets.data | sha256sum }}
+        {{- end }}
+        {{- if .Values.vault.enabled }}
+        {{- include "devops-info-service.vaultAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "devops-info-service.serviceAccountName" . }}
+      automountServiceAccountToken: {{ if .Values.vault.enabled }}true{{ else }}{{ .Values.automountServiceAccountToken }}{{ end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ include "devops-info-service.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "devops-info-service.envVars" . | nindent 12 }}
+          {{- if .Values.secrets.enabled }}
+          envFrom:
+            - secretRef:
+                name: {{ include "devops-info-service.secretName" . }}
+          {{- end }}
+          ports:
+            - name: {{ .Values.container.portName }}
+              containerPort: {{ .Values.container.port }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            {{- toYaml (omit .Values.probes.startup "enabled") | nindent 12 }}
+          {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            {{- toYaml (omit .Values.probes.liveness "enabled") | nindent 12 }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            {{- toYaml (omit .Values.probes.readiness "enabled") | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
