@@ -1,0 +1,65 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: devops-info-service-environments
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: devops-core-course
+    app.kubernetes.io/component: gitops
+spec:
+  goTemplate: true
+  generators:
+    - list:
+        elements:
+          - env: dev
+            namespace: dev-appset
+            releaseName: devops-info-service-dev-appset
+            valuesFile: values-dev.yaml
+            serviceType: ClusterIP
+            appRegion: lab13-appset-dev
+            autoSync: "true"
+          - env: prod
+            namespace: prod-appset
+            releaseName: devops-info-service-prod-appset
+            valuesFile: values-prod.yaml
+            serviceType: ClusterIP
+            appRegion: lab13-appset-prod
+            autoSync: "false"
+  template:
+    metadata:
+      name: 'devops-info-service-{{ .env }}-appset'
+      labels:
+        app.kubernetes.io/part-of: devops-core-course
+        app.kubernetes.io/component: gitops
+        app.kubernetes.io/environment: '{{ .env }}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Ravwvil/DevOps-Core-Course.git
+        targetRevision: lab13
+        path: k8s/devops-info-service
+        helm:
+          releaseName: '{{ .releaseName }}'
+          valueFiles:
+            - '{{ .valuesFile }}'
+          values: |
+            service:
+              type: {{ .serviceType }}
+            env:
+              appRegion: {{ .appRegion }}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{ .namespace }}'
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+  templatePatch: |
+    {{- if eq .autoSync "true" }}
+    spec:
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+    {{- end }}
