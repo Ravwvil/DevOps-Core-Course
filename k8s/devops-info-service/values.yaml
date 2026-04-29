@@ -1,0 +1,167 @@
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+revisionHistoryLimit: 5
+minReadySeconds: 5
+
+image:
+  repository: ravwvil/devops-info-service
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+container:
+  portName: http
+  port: 8000
+
+env:
+  host: "0.0.0.0"
+  appName: devops-info-service
+  appEnv: development
+  appRegion: local-cluster
+  logLevel: info
+  extra: []
+
+config:
+  fileName: config.json
+  mountPath: /config
+  responseMode: detailed
+  featureFlags:
+    visitsCounter: true
+    metrics: true
+    hotReload: true
+
+persistence:
+  enabled: true
+  existingClaim: ""
+  accessMode: ReadWriteOnce
+  size: 100Mi
+  storageClass: ""
+  mountPath: /data
+  visitsFileName: visits
+
+rollout:
+  enabled: false
+  strategy: canary
+  canary:
+    maxSurge: 25%
+    maxUnavailable: 0
+  blueGreen:
+    autoPromotionEnabled: false
+    autoPromotionSeconds: 0
+  analysis:
+    enabled: false
+    interval: 10s
+    count: 3
+    failureLimit: 1
+    path: /health
+
+service:
+  type: NodePort
+  port: 80
+  targetPort: http
+  nodePort: 30080
+  annotations: {}
+
+commonLabels:
+  app.kubernetes.io/component: api
+  app.kubernetes.io/part-of: devops-core-course
+
+podAnnotations: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+secrets:
+  enabled: true
+  create: true
+  name: ""
+  type: Opaque
+  data:
+    username: "change-me"
+    password: "change-me"
+
+vault:
+  enabled: false
+  role: devops-info-service
+  authPath: auth/kubernetes
+  secretPath: kv/data/devops-info-service/config
+  mountPath: /vault/secrets
+  fileName: config.env
+  injectCommand: ""
+  template:
+    enabled: true
+    staticSecretRenderInterval: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+automountServiceAccountToken: false
+terminationGracePeriodSeconds: 30
+
+probes:
+  startup:
+    enabled: true
+    httpGet:
+      path: /health
+      port: http
+    failureThreshold: 12
+    periodSeconds: 5
+    timeoutSeconds: 2
+  liveness:
+    enabled: true
+    httpGet:
+      path: /health
+      port: http
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 3
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+hooks:
+  enabled: true
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  ttlSecondsAfterFinished: 30
+  preInstall:
+    enabled: true
+    weight: -5
+    deletePolicy: before-hook-creation,hook-succeeded
+    sleepSeconds: 12
+  postInstall:
+    enabled: true
+    weight: 5
+    deletePolicy: before-hook-creation,hook-succeeded
+    sleepSeconds: 12
+    path: /health
