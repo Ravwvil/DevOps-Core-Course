@@ -1,0 +1,20 @@
+replicaCount: 5
+
+persistence:
+  enabled: false
+
+service:
+  type: ClusterIP
+
+hooks:
+  enabled: false
+
+rollout:
+  enabled: true
+  strategy: canary
+  analysis:
+    enabled: true
+
+env:
+  appEnv: rollout-canary
+  appRegion: lab14-canary

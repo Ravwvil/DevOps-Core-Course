@@ -1,0 +1,45 @@
+1. Release: {{ .Release.Name }}
+2. Namespace: {{ .Release.Namespace }}
+
+{{- if .Values.statefulset.enabled }}
+StatefulSet resources:
+  kubectl get statefulset,pod,pvc -n {{ .Release.Namespace }}
+Headless service DNS example:
+  {{ include "devops-info-service.fullname" . }}-0.{{ include "devops-info-service.headlessServiceName" . }}.{{ .Release.Namespace }}.svc.cluster.local
+Port-forward locally:
+  kubectl port-forward svc/{{ include "devops-info-service.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+{{- else if and .Values.rollout.enabled (eq .Values.rollout.strategy "blueGreen") }}
+Active service:
+  kubectl port-forward svc/{{ include "devops-info-service.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+Preview service:
+  kubectl port-forward svc/{{ include "devops-info-service.previewServiceName" . }} 8081:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+Rollout commands:
+  kubectl argo rollouts get rollout {{ include "devops-info-service.fullname" . }} -n {{ .Release.Namespace }}
+  kubectl argo rollouts promote {{ include "devops-info-service.fullname" . }} -n {{ .Release.Namespace }}
+{{- else if eq .Values.service.type "NodePort" }}
+Application URL:
+  http://127.0.0.1:{{ .Values.service.nodePort }}/
+{{- else if eq .Values.service.type "LoadBalancer" }}
+Check external access:
+  kubectl get svc {{ include "devops-info-service.fullname" . }} -n {{ .Release.Namespace }}
+{{- else }}
+Port-forward locally:
+  kubectl port-forward svc/{{ include "devops-info-service.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+{{- end }}
+
+Useful checks:
+{{- if .Values.statefulset.enabled }}
+  kubectl exec {{ include "devops-info-service.fullname" . }}-0 -n {{ .Release.Namespace }} -- cat {{ include "devops-info-service.configFilePath" . }}
+  kubectl exec {{ include "devops-info-service.fullname" . }}-0 -n {{ .Release.Namespace }} -- sh -c "printenv | grep APP_"
+  kubectl exec {{ include "devops-info-service.fullname" . }}-0 -n {{ .Release.Namespace }} -- cat {{ include "devops-info-service.visitsFilePath" . }}
+  kubectl exec {{ include "devops-info-service.fullname" . }}-1 -n {{ .Release.Namespace }} -- cat {{ include "devops-info-service.visitsFilePath" . }}
+{{- else if .Values.rollout.enabled }}
+  kubectl argo rollouts get rollout {{ include "devops-info-service.fullname" . }} -n {{ .Release.Namespace }}
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }}
+  kubectl exec -n {{ .Release.Namespace }} $(kubectl get pod -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }} -o jsonpath='{.items[0].metadata.name}') -- cat {{ include "devops-info-service.configFilePath" . }}
+  kubectl exec -n {{ .Release.Namespace }} $(kubectl get pod -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }} -o jsonpath='{.items[0].metadata.name}') -- sh -c "printenv | grep APP_"
+{{- else }}
+  kubectl exec deploy/{{ include "devops-info-service.fullname" . }} -n {{ .Release.Namespace }} -- cat {{ include "devops-info-service.configFilePath" . }}
+  kubectl exec deploy/{{ include "devops-info-service.fullname" . }} -n {{ .Release.Namespace }} -- sh -c "printenv | grep APP_"
+  kubectl exec deploy/{{ include "devops-info-service.fullname" . }} -n {{ .Release.Namespace }} -- cat {{ include "devops-info-service.visitsFilePath" . }}
+{{- end }}

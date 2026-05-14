@@ -1,0 +1,119 @@
+{{- if .Values.statefulset.enabled }}
+{{- include "devops-info-service.workloadValidation" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "devops-info-service.fullname" . }}
+  labels:
+    {{- include "devops-info-service.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "devops-info-service.headlessServiceName" . }}
+  replicas: {{ .Values.replicaCount }}
+  podManagementPolicy: {{ .Values.statefulset.podManagementPolicy }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  minReadySeconds: {{ .Values.minReadySeconds }}
+  updateStrategy:
+    type: {{ .Values.statefulset.updateStrategy.type }}
+    {{- if and (eq .Values.statefulset.updateStrategy.type "RollingUpdate") .Values.statefulset.updateStrategy.rollingUpdate }}
+    rollingUpdate:
+      {{- toYaml .Values.statefulset.updateStrategy.rollingUpdate | nindent 6 }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "devops-info-service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "devops-info-service.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config-file: {{ tpl (.Files.Get "files/config.json") . | sha256sum }}
+        checksum/config-env: {{ include "devops-info-service.configEnvData" . | sha256sum }}
+        {{- if and .Values.secrets.enabled .Values.secrets.create }}
+        checksum/secret: {{ toYaml .Values.secrets.data | sha256sum }}
+        {{- end }}
+        {{- if .Values.vault.enabled }}
+        {{- include "devops-info-service.vaultAnnotations" . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "devops-info-service.serviceAccountName" . }}
+      automountServiceAccountToken: {{ if .Values.vault.enabled }}true{{ else }}{{ .Values.automountServiceAccountToken }}{{ end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.initContainers.enabled }}
+      initContainers:
+        {{- include "devops-info-service.initContainers" . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "devops-info-service.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "devops-info-service.envVars" . | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "devops-info-service.envConfigMapName" . }}
+          {{- if .Values.secrets.enabled }}
+            - secretRef:
+                name: {{ include "devops-info-service.secretName" . }}
+          {{- end }}
+          ports:
+            - name: {{ .Values.container.portName }}
+              containerPort: {{ .Values.container.port }}
+              protocol: TCP
+          volumeMounts:
+            - name: config-volume
+              mountPath: {{ .Values.config.mountPath }}
+              readOnly: true
+            - name: data-volume
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- if .Values.initContainers.enabled }}
+            - name: {{ include "devops-info-service.initSharedVolumeName" . }}
+              mountPath: {{ .Values.initContainers.shared.mountPath }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            {{- toYaml (omit .Values.probes.startup "enabled") | nindent 12 }}
+          {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            {{- toYaml (omit .Values.probes.liveness "enabled") | nindent 12 }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            {{- toYaml (omit .Values.probes.readiness "enabled") | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ include "devops-info-service.configFileConfigMapName" . }}
+        {{- if .Values.initContainers.enabled }}
+        - name: {{ include "devops-info-service.initSharedVolumeName" . }}
+          emptyDir: {}
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data-volume
+        labels:
+          {{- include "devops-info-service.labels" . | nindent 10 }}
+      spec:
+        accessModes:
+          - {{ .Values.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        {{- end }}
+{{- end }}
