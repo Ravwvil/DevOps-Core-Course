@@ -1,0 +1,22 @@
+# Terraform state
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Variable values (may contain secrets)
+terraform.tfvars
+*.auto.tfvars
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Credentials
+*.pem
+*.key
